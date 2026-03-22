@@ -74,3 +74,24 @@ public class InventoryGrain : Grain, IInventoryGrain
     ...
 }
 ```
+
+## Benchmarking partition sizes
+
+네, `BenchmarkDotNet`을 사용할 수 있습니다. 샘플 앱은 `benchmark` 모드에서 `BenchmarkDotNet` 러너를 통해 `PartitionSize=1..100` 구간을 스윕하면서 DynamoDB Local 기반 측정을 수행합니다.
+
+```bash
+docker compose up -d
+dotnet run --project samples/SampleApp -- benchmark
+```
+
+벤치마크 기본 워크로드는 다음과 같습니다.
+
+- seed item count: `10,000`
+- `PartitionSize`: `1`부터 `100`까지
+- `Read`: 한 invocation 당 전체 읽기 `5`회
+- `SingleWrite`: 한 invocation 당 단건 쓰기 `20`회
+- `BatchWrite`: 한 invocation 당 배치 쓰기 `10`회 (`batch size = 100`)
+- BenchmarkDotNet job: `launch 1`, `warmup 3`, `measurement iteration 12`
+
+결과 아티팩트는 `benchmark-results/` 아래에 생성되며, BenchmarkDotNet CSV/Markdown 리포트를 통해 처리량 및 레이턴시 통계를 확인할 수 있습니다.
+

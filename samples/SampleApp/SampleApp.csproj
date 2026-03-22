@@ -8,6 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="BenchmarkDotNet" Version="0.15.6" />
         <PackageReference Include="Microsoft.Orleans.Server" Version="10.0.1" />
         <PackageReference Include="Microsoft.Orleans.Sdk" Version="10.0.1" />
         <PackageReference Include="Microsoft.Orleans.Transactions" Version="10.0.1" />
