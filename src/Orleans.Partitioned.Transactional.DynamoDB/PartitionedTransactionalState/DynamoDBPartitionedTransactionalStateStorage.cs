@@ -29,6 +29,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
     private KeyEntity key;
     private List<KeyValuePair<long, StateEntity>> states;
     private PartitionManifest currentManifest;
+    private int committedPartitionSize;
     
     public DynamoDBPartitionedTransactionalStateStorage(
         TransactionalDynamoDBStorage storage,
@@ -68,6 +69,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
             {
                 LogDebugLoadedFresh(this.partitionKey);
                 currentManifest = new PartitionManifest();
+                committedPartitionSize = 0;
                 return new TransactionalStorageLoadResponse<TState>();
             }
 
@@ -76,6 +78,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
             {
                 committedState = new TState();
                 currentManifest = new PartitionManifest();
+                committedPartitionSize = 0;
             }
             else
             {
@@ -87,7 +90,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
                     throw new InvalidOperationException(error);
                 }
 
-                committedState = await ReassembleStateAsync(states[pos].Value);
+                committedState = await ReassembleStateAsync(states[pos].Value, updateCurrentCommittedState: true);
             }
 
             var pendingRecords = new List<PendingTransactionState<TState>>();
@@ -201,6 +204,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
                         if (tempState != null)
                         {
                             currentManifest = tempState.Manifest ?? new PartitionManifest();
+                            committedPartitionSize = tempState.PartitionSize;
                         }
                     }
                 }
@@ -274,8 +278,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
 
         var newManifest = new PartitionManifest();
         
-        var oldPartitionCount = currentManifest?.PartitionToCommitSeq?.Count ?? 0;
-        var rebalanceNeeded = currentManifest == null || oldPartitionCount != partitionSize;
+        var rebalanceNeeded = currentManifest == null || this.committedPartitionSize != partitionSize;
 
         foreach (var (partitionNumber, partitionData) in partitions)
         {
@@ -370,23 +373,29 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
     /// <summary>
     /// Reassemble full TState
     /// </summary>
-    private async Task<TState> ReassembleStateAsync(StateEntity stateEntity)
+    private async Task<TState> ReassembleStateAsync(StateEntity stateEntity, bool updateCurrentCommittedState = false)
     {
         var state = Deserialize<TState>(stateEntity.State);
         if (state == null)
         {
             state = new TState();
         }
-        
-        currentManifest = state.Manifest ?? new PartitionManifest();
 
-        if (currentManifest.PartitionToCommitSeq.Count == 0)
+        var manifest = state.Manifest ?? new PartitionManifest();
+
+        if (updateCurrentCommittedState)
+        {
+            currentManifest = manifest;
+            committedPartitionSize = state.PartitionSize;
+        }
+
+        if (manifest.PartitionToCommitSeq.Count == 0)
         {
             return state;
         }
 
         // TODO: wrap partitioned entity as specific class (e.g. PartitionEntity<TKey, TValue>);
-        var partitionData = await LoadPartitionRowsAsync(currentManifest);
+        var partitionData = await LoadPartitionRowsAsync(manifest);
         var merged = (System.Collections.IDictionary)Activator.CreateInstance(dictType)!;
 
         foreach (var (partitionNumber, data) in partitionData)
@@ -401,7 +410,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
             }
             else
             {
-                LogWarningMissingPartition(this.partitionKey, partitionNumber, currentManifest.PartitionToCommitSeq[partitionNumber]);
+                LogWarningMissingPartition(this.partitionKey, partitionNumber, manifest.PartitionToCommitSeq[partitionNumber]);
             }
         }
         
@@ -504,20 +513,20 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
         }
     }
     
-    private (System.Collections.IDictionary items, int partitionSize) ExtractPartitionedFields(TState state)
+    private (IDictionary items, int partitionSize) ExtractPartitionedFields(TState state)
     {
-        var items = (System.Collections.IDictionary)itemsProperty.GetValue(state)!;
-        return (items, ((IPartitionedState)state).PartitionSize);
+        var items = (IDictionary)itemsProperty.GetValue(state)!;
+        return (items, state.PartitionSize);
     }
     
-    private System.Collections.IDictionary GetItems(TState state)
-        => (System.Collections.IDictionary)itemsProperty.GetValue(state)!;
+    private IDictionary GetItems(TState state)
+        => (IDictionary)itemsProperty.GetValue(state)!;
     
-    private void SetItems(TState state, System.Collections.IDictionary items)
+    private void SetItems(TState state, IDictionary items)
         => itemsProperty.SetValue(state, items);
 
     private void ClearItems(TState state)
-        => SetItems(state, (System.Collections.IDictionary)Activator.CreateInstance(dictType)!);
+        => SetItems(state, (IDictionary)Activator.CreateInstance(dictType)!);
 
     private async Task CleanupOrphanPartitions(PartitionManifest oldManifest, PartitionManifest newManifest)
     {
