@@ -12,16 +12,22 @@ public interface IInventoryGrain : IGrainWithStringKey
 {
     [Transaction(TransactionOption.CreateOrJoin)]
     Task SetItem(string itemId, InventoryItem item);
-    
+
     [Transaction(TransactionOption.CreateOrJoin)]
     Task DeleteItem(string itemId);
 
     [Transaction(TransactionOption.CreateOrJoin)]
     Task<InventoryItem?> GetItem(string itemId);
-    
+
     [Transaction(TransactionOption.CreateOrJoin)]
     Task<Dictionary<string, InventoryItem>> GetAllItems();
-    
+
     [Transaction(TransactionOption.CreateOrJoin)]
     Task SetItems(Dictionary<string, InventoryItem> items);
+
+    [Transaction(TransactionOption.CreateOrJoin)]
+    Task ResetState(int partitionSize, Dictionary<string, InventoryItem> items);
+
+    [Transaction(TransactionOption.CreateOrJoin)]
+    Task BatchSetItems(Dictionary<string, InventoryItem> items);
 }

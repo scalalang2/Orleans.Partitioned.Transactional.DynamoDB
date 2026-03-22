@@ -37,4 +37,25 @@ public class InventoryGrain(
             }
         });
     }
+
+    public async Task ResetState(int partitionSize, Dictionary<string, InventoryItem> items)
+    {
+        await state.PerformUpdate(s =>
+        {
+            s.PartitionSize = partitionSize;
+            s.Manifest = new();
+            s.Items = new SortedDictionary<string, InventoryItem>(items);
+        });
+    }
+
+    public async Task BatchSetItems(Dictionary<string, InventoryItem> items)
+    {
+        await state.PerformUpdate(s =>
+        {
+            foreach (var (key, value) in items)
+            {
+                s.Items[key] = value;
+            }
+        });
+    }
 }
