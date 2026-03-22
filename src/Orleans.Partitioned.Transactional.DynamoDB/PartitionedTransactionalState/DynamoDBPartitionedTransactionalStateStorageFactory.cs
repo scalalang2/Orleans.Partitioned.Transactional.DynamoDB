@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,9 +9,9 @@ using Orleans.Partitioned.Transactional.DynamoDB.Internal;
 using Orleans.Partitioned.Transactional.DynamoDB.Shared;
 using Orleans.Transactions.Abstractions;
 
-namespace Orleans.Partitioned.Transactional.DynamoDB.TransactionalState;
+namespace Orleans.Partitioned.Transactional.DynamoDB.PartitionedTransactionalState;
 
-public partial class DynamoDBTransactionalStateStorageFactory : ITransactionalStateStorageFactory, ILifecycleParticipant<ISiloLifecycle>
+public partial class DynamoDBPartitionedTransactionalStateStorageFactory : ITransactionalStateStorageFactory, ILifecycleParticipant<ISiloLifecycle>
 {
     private readonly string name;
     private readonly DynamoDBTransactionalStorageOptions options;
@@ -20,7 +20,7 @@ public partial class DynamoDBTransactionalStateStorageFactory : ITransactionalSt
 
     private TransactionalDynamoDBStorage storage;
 
-    public DynamoDBTransactionalStateStorageFactory(
+    public DynamoDBPartitionedTransactionalStateStorageFactory(
         string name,
         DynamoDBTransactionalStorageOptions options,
         IOptions<ClusterOptions> clusterOptions,
@@ -32,30 +32,45 @@ public partial class DynamoDBTransactionalStateStorageFactory : ITransactionalSt
         this.clusterOptions = clusterOptions.Value;
         this.loggerFactory = loggerFactory;
     }
-
+    
     public static ITransactionalStateStorageFactory Create(IServiceProvider services, string name)
     {
         var optionsMonitor = services.GetRequiredService<IOptionsMonitor<DynamoDBTransactionalStorageOptions>>();
-        return ActivatorUtilities.CreateInstance<DynamoDBTransactionalStateStorageFactory>(services, name, optionsMonitor.Get(name));
+        return ActivatorUtilities.CreateInstance<DynamoDBPartitionedTransactionalStateStorageFactory>(services, name, optionsMonitor.Get(name));
     }
-
+    
     public ITransactionalStateStorage<TState> Create<TState>(string stateName, IGrainContext context) where TState : class, new()
     {
         if (this.storage == null)
         {
             throw new ArgumentException("DynamoDBStorage client is not initialized");
         }
+        
+        if (!typeof(IPartitionedState).IsAssignableFrom(typeof(TState)))
+        {
+            throw new InvalidOperationException(
+                $"Type {typeof(TState)} does not implement IPartitionedState. " +
+                "Use DynamoDBTransactionalStateStorage for non-partitioned state.");
+        }
 
         var partitionKey = this.MakePartitionKey(context, stateName);
-        var logger = this.loggerFactory.CreateLogger<DynamoDBTransactionalStateStorage<TState>>();
-        return ActivatorUtilities.CreateInstance<DynamoDBTransactionalStateStorage<TState>>(context.ActivationServices, this.storage, this.options, partitionKey, logger);
+        var storageType = typeof(DynamoDBPartitionedTransactionalStateStorage<>).MakeGenericType(typeof(TState));
+        return (ITransactionalStateStorage<TState>)ActivatorUtilities.CreateInstance(
+            context.ActivationServices,
+            storageType,
+            this.storage,
+            this.options,
+            partitionKey);
     }
 
     public void Participate(ISiloLifecycle lifecycle)
     {
-        lifecycle.Subscribe(OptionFormattingUtilities.Name<DynamoDBTransactionalStateStorageFactory>(this.name), this.options.InitStage, Init);
+        lifecycle.Subscribe(
+            OptionFormattingUtilities.Name<DynamoDBPartitionedTransactionalStateStorageFactory>(this.name),
+            this.options.InitStage,
+            Init);
     }
-
+    
     private async Task Initialize()
     {
         var stopWatch = Stopwatch.StartNew();
@@ -64,8 +79,7 @@ public partial class DynamoDBTransactionalStateStorageFactory : ITransactionalSt
         try
         {
             var initMsg = string.Format("Init: Name={0} ServiceId={1} Table={2}", this.name, this.options.ServiceId, this.options.TableName);
-
-            LogInformationInitializingDynamoDBGrainStorage(logger, this.name, initMsg);
+            LogInformationInitializing(logger, this.name, initMsg);
 
             this.storage = new TransactionalDynamoDBStorage(
                 logger,
@@ -95,12 +109,12 @@ public partial class DynamoDBTransactionalStateStorageFactory : ITransactionalSt
                 null);
 
             stopWatch.Stop();
-            LogInformationProviderInitialized(logger, this.name, this.GetType().Name, this.options.InitStage, stopWatch.ElapsedMilliseconds);
+            LogInformationInitialized(logger, this.name, this.GetType().Name, this.options.InitStage, stopWatch.ElapsedMilliseconds);
         }
         catch (Exception exc)
         {
             stopWatch.Stop();
-            LogErrorProviderInitFailed(logger, this.name, this.GetType().Name, this.options.InitStage, stopWatch.ElapsedMilliseconds, exc);
+            LogErrorInitFailed(logger, this.name, this.GetType().Name, this.options.InitStage, stopWatch.ElapsedMilliseconds, exc);
             throw;
         }
     }
@@ -110,28 +124,18 @@ public partial class DynamoDBTransactionalStateStorageFactory : ITransactionalSt
         var grainKey = context.GrainReference.GrainId.ToString();
         return $"{grainKey}_{this.clusterOptions.ServiceId}_{stateName}";
     }
-
+    
     private Task Init(CancellationToken cancellationToken)
     {
         return Initialize();
     }
+    
+    [LoggerMessage(Level = LogLevel.Information, Message = "AWS DynamoDB Partitioned Transactional Grain Storage {Name} is initializing: {InitMsg}")]
+    private static partial void LogInformationInitializing(ILogger logger, string name, string initMsg);
 
-    [LoggerMessage(
-        Level = LogLevel.Information,
-        Message = "AWS DynamoDB Transactional Grain Storage {Name} is initializing: {InitMsg}"
-    )]
-    private static partial void LogInformationInitializingDynamoDBGrainStorage(ILogger logger, string name, string initMsg);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Initializing provider {Name} of type {Type} in stage {Stage} took {ElapsedMilliseconds} Milliseconds.")]
+    private static partial void LogInformationInitialized(ILogger logger, string name, string type, int stage, long elapsedMilliseconds);
 
-    [LoggerMessage(
-        Level = LogLevel.Information,
-        Message = "Initializing provider {Name} of type {Type} in stage {Stage} took {ElapsedMilliseconds} Milliseconds."
-    )]
-    private static partial void LogInformationProviderInitialized(ILogger logger, string name, string type, int stage, long elapsedMilliseconds);
-
-    [LoggerMessage(
-        EventId = (int)ErrorCode.Provider_ErrorFromInit,
-        Level = LogLevel.Error,
-        Message = "Initialization failed for provider {Name} of type {Type} in stage {Stage} in {ElapsedMilliseconds} Milliseconds."
-    )]
-    private static partial void LogErrorProviderInitFailed(ILogger logger, string name, string type, int stage, long elapsedMilliseconds, Exception exception);
+    [LoggerMessage(EventId = (int)ErrorCode.Provider_ErrorFromInit, Level = LogLevel.Error, Message = "Initialization failed for provider {Name} of type {Type} in stage {Stage} in {ElapsedMilliseconds} Milliseconds.")]
+    private static partial void LogErrorInitFailed(ILogger logger, string name, string type, int stage, long elapsedMilliseconds, Exception exception);
 }

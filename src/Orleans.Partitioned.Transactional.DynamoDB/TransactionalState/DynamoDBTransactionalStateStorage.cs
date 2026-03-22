@@ -3,6 +3,7 @@ using Amazon.DynamoDBv2.Model;
 using Microsoft.Extensions.Logging;
 using Orleans.Configuration;
 using Orleans.Partitioned.Transactional.DynamoDB.Internal;
+using Orleans.Partitioned.Transactional.DynamoDB.Shared;
 using Orleans.Persistence.DynamoDB;
 using Orleans.Storage;
 using Orleans.Transactions;
@@ -136,7 +137,7 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
                     await this.storage.DeleteEntryAsync(
                         this.tableName,
                         this.MakeKeyAttributes(entity.PartitionKey, entity.RowKey),
-                        $"{DynamoDBTransactionalStateConstants.ETAG_PROPERTY_NAME} = :etag",
+                        $"{SharedConstants.ETAG_PROPERTY_NAME} = :etag",
                         new Dictionary<string, AttributeValue>
                         {
                             [":etag"] = new AttributeValue { N = entity.ETag.ToString() }
@@ -169,7 +170,7 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
                                 tableName,
                                 existing.KeyAttributes(),
                                 existing.UpdatedFieldsAttributes(),
-                                $"{DynamoDBTransactionalStateConstants.ETAG_PROPERTY_NAME} = :etag",
+                                $"{SharedConstants.ETAG_PROPERTY_NAME} = :etag",
                                 new Dictionary<string, AttributeValue>
                                 {
                                     [":etag"] = new AttributeValue { N = currentETag }
@@ -231,7 +232,7 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
                     await this.storage.DeleteEntryAsync(
                         this.tableName,
                         this.MakeKeyAttributes(stateToDelete.Value.PartitionKey, stateToDelete.Value.RowKey),
-                        $"{DynamoDBTransactionalStateConstants.ETAG_PROPERTY_NAME} = :etag",
+                        $"{SharedConstants.ETAG_PROPERTY_NAME} = :etag",
                         new Dictionary<string, AttributeValue>
                         {
                             [":etag"] = new AttributeValue { N = stateToDelete.Value.ETag.ToString() }
@@ -265,8 +266,8 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
     {
         return new Dictionary<string, AttributeValue>
         {
-            [DynamoDBTransactionalStateConstants.PARTITION_KEY_PROPERTY_NAME] = new AttributeValue { S = partition },
-            [DynamoDBTransactionalStateConstants.ROW_KEY_PROPERTY_NAME] = new AttributeValue { S = rowKey }
+            [SharedConstants.PARTITION_KEY_PROPERTY_NAME] = new AttributeValue { S = partition },
+            [SharedConstants.ROW_KEY_PROPERTY_NAME] = new AttributeValue { S = rowKey }
         };
     }
 
@@ -277,8 +278,8 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
     {
         var keyAttributes = new Dictionary<string, AttributeValue>
         {
-            [DynamoDBTransactionalStateConstants.PARTITION_KEY_PROPERTY_NAME] = new AttributeValue { S = partitionKey },
-            [DynamoDBTransactionalStateConstants.ROW_KEY_PROPERTY_NAME] = new AttributeValue { S = KeyEntity.RK },
+            [SharedConstants.PARTITION_KEY_PROPERTY_NAME] = new AttributeValue { S = partitionKey },
+            [SharedConstants.ROW_KEY_PROPERTY_NAME] = new AttributeValue { S = KeyEntity.RK },
         };
 
         var keyEntity = await storage.ReadSingleEntryAsync(
@@ -294,7 +295,7 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
     private async Task<List<KeyValuePair<long, StateEntity>>> LoadStateEntitiesAsync()
     {
         var keyConditionExpression =
-            $"{DynamoDBTransactionalStateConstants.PARTITION_KEY_PROPERTY_NAME} = :partitionKey and {DynamoDBTransactionalStateConstants.ROW_KEY_PROPERTY_NAME} between :minRowKeyPrefix and :maxRowKeyPrefix";
+            $"{SharedConstants.PARTITION_KEY_PROPERTY_NAME} = :partitionKey and {SharedConstants.ROW_KEY_PROPERTY_NAME} between :minRowKeyPrefix and :maxRowKeyPrefix";
         var keys = new Dictionary<string, AttributeValue>
         {
             { ":partitionKey", new AttributeValue { S = this.partitionKey } },

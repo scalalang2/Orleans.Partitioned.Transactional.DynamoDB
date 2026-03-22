@@ -1,5 +1,6 @@
 using Amazon.DynamoDBv2.Model;
 using Orleans.Partitioned.Transactional.DynamoDB.Internal;
+using Orleans.Partitioned.Transactional.DynamoDB.Shared;
 using Orleans.Partitioned.Transactional.DynamoDB.TransactionalState;
 
 namespace Orleans.Partitioned.Transactional.DynamoDB.Tests;
@@ -66,13 +67,13 @@ public class StorageEntityTests
 
         Dictionary<string, AttributeValue> item = entity.ToStorageFormat();
 
-        Assert.Equal("partition", item[DynamoDBTransactionalStateConstants.PARTITION_KEY_PROPERTY_NAME].S);
-        Assert.Equal(entity.RowKey, item[DynamoDBTransactionalStateConstants.ROW_KEY_PROPERTY_NAME].S);
+        Assert.Equal("partition", item[SharedConstants.PARTITION_KEY_PROPERTY_NAME].S);
+        Assert.Equal(entity.RowKey, item[SharedConstants.ROW_KEY_PROPERTY_NAME].S);
         Assert.Equal("tx-1", item[StateEntity.TRANSACTION_ID_PROPERTY_NAME].S);
         Assert.Equal("2026-03-22T00:00:00.0000000Z", item[StateEntity.TRANSACTION_TIMESTAMP_PROPERTY_NAME].S);
         Assert.Equal(new byte[] { 4, 5, 6 }, item[StateEntity.TRANSACTION_MANAGER_PROPERTY_NAME].B.ToArray());
-        Assert.Equal(new byte[] { 7, 8, 9 }, item[DynamoDBTransactionalStateConstants.BINARY_STATE_PROPERTY_NAME].B.ToArray());
-        Assert.Equal("3", item[DynamoDBTransactionalStateConstants.ETAG_PROPERTY_NAME].N);
+        Assert.Equal(new byte[] { 7, 8, 9 }, item[SharedConstants.BINARY_STATE_PROPERTY_NAME].B.ToArray());
+        Assert.Equal("3", item[SharedConstants.ETAG_PROPERTY_NAME].N);
     }
 
     [Fact]

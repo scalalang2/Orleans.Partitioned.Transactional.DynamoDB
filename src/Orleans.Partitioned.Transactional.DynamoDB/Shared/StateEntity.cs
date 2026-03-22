@@ -3,7 +3,7 @@ using Amazon.DynamoDBv2.Model;
 using Orleans.Storage;
 using Orleans.Transactions.Abstractions;
 
-namespace Orleans.Partitioned.Transactional.DynamoDB.TransactionalState;
+namespace Orleans.Partitioned.Transactional.DynamoDB.Shared;
 
 internal class StateEntity
 {
@@ -21,10 +21,10 @@ internal class StateEntity
 
     internal StateEntity(Dictionary<string, AttributeValue> fields)
     {
-        if (fields.TryGetValue(DynamoDBTransactionalStateConstants.PARTITION_KEY_PROPERTY_NAME, out var partitionKey))
+        if (fields.TryGetValue(SharedConstants.PARTITION_KEY_PROPERTY_NAME, out var partitionKey))
             this.PartitionKey = partitionKey.S;
 
-        if (fields.TryGetValue(DynamoDBTransactionalStateConstants.ROW_KEY_PROPERTY_NAME, out var rowKey))
+        if (fields.TryGetValue(SharedConstants.ROW_KEY_PROPERTY_NAME, out var rowKey))
             this.RowKey = rowKey.S;
 
         if (fields.TryGetValue(TRANSACTION_ID_PROPERTY_NAME, out var transactionId))
@@ -36,10 +36,10 @@ internal class StateEntity
         if (fields.TryGetValue(TRANSACTION_MANAGER_PROPERTY_NAME, out var transactionManager))
             this.TransactionManager = transactionManager.B.ToArray();
 
-        if (fields.TryGetValue(DynamoDBTransactionalStateConstants.BINARY_STATE_PROPERTY_NAME, out var state))
+        if (fields.TryGetValue(SharedConstants.BINARY_STATE_PROPERTY_NAME, out var state))
             this.State = state.B.ToArray();
 
-        if (fields.TryGetValue(DynamoDBTransactionalStateConstants.ETAG_PROPERTY_NAME, out var etag))
+        if (fields.TryGetValue(SharedConstants.ETAG_PROPERTY_NAME, out var etag))
             this.ETag = int.Parse(etag.N);
     }
 
@@ -92,12 +92,12 @@ internal class StateEntity
     {
         var item = new Dictionary<string, AttributeValue>
         {
-            { DynamoDBTransactionalStateConstants.PARTITION_KEY_PROPERTY_NAME, new AttributeValue { S = this.PartitionKey } },
-            { DynamoDBTransactionalStateConstants.ROW_KEY_PROPERTY_NAME, new AttributeValue { S = this.RowKey } },
+            { SharedConstants.PARTITION_KEY_PROPERTY_NAME, new AttributeValue { S = this.PartitionKey } },
+            { SharedConstants.ROW_KEY_PROPERTY_NAME, new AttributeValue { S = this.RowKey } },
         };
 
         if (this.State is { Length: > 0 })
-            item[DynamoDBTransactionalStateConstants.BINARY_STATE_PROPERTY_NAME] = new AttributeValue { B = new MemoryStream(this.State) };
+            item[SharedConstants.BINARY_STATE_PROPERTY_NAME] = new AttributeValue { B = new MemoryStream(this.State) };
 
         if (!string.IsNullOrEmpty(this.TransactionId))
             item[TRANSACTION_ID_PROPERTY_NAME] = new AttributeValue { S = this.TransactionId };
@@ -109,7 +109,7 @@ internal class StateEntity
             item[TRANSACTION_MANAGER_PROPERTY_NAME] = new AttributeValue { B = new MemoryStream(this.TransactionManager) };
 
         if (this.ETag.HasValue)
-            item[DynamoDBTransactionalStateConstants.ETAG_PROPERTY_NAME] = new AttributeValue { N = this.ETag.Value.ToString() };
+            item[SharedConstants.ETAG_PROPERTY_NAME] = new AttributeValue { N = this.ETag.Value.ToString() };
 
         return item;
     }
@@ -118,8 +118,8 @@ internal class StateEntity
     {
         return new Dictionary<string, AttributeValue>
         {
-            { DynamoDBTransactionalStateConstants.PARTITION_KEY_PROPERTY_NAME, new AttributeValue { S = this.PartitionKey } },
-            { DynamoDBTransactionalStateConstants.ROW_KEY_PROPERTY_NAME, new AttributeValue { S = this.RowKey } },
+            { SharedConstants.PARTITION_KEY_PROPERTY_NAME, new AttributeValue { S = this.PartitionKey } },
+            { SharedConstants.ROW_KEY_PROPERTY_NAME, new AttributeValue { S = this.RowKey } },
         };
     }
 
@@ -128,7 +128,7 @@ internal class StateEntity
         var item = new Dictionary<string, AttributeValue>();
 
         if (this.State != null)
-            item[DynamoDBTransactionalStateConstants.BINARY_STATE_PROPERTY_NAME] = new AttributeValue { B = new MemoryStream(this.State) };
+            item[SharedConstants.BINARY_STATE_PROPERTY_NAME] = new AttributeValue { B = new MemoryStream(this.State) };
 
         if (!string.IsNullOrEmpty(this.TransactionId))
             item[TRANSACTION_ID_PROPERTY_NAME] = new AttributeValue { S = this.TransactionId };
@@ -140,7 +140,7 @@ internal class StateEntity
             item[TRANSACTION_MANAGER_PROPERTY_NAME] = new AttributeValue { B = new MemoryStream(this.TransactionManager) };
 
         if (this.ETag.HasValue)
-            item[DynamoDBTransactionalStateConstants.ETAG_PROPERTY_NAME] = new AttributeValue { N = this.ETag.Value.ToString() };
+            item[SharedConstants.ETAG_PROPERTY_NAME] = new AttributeValue { N = this.ETag.Value.ToString() };
 
         return item;
     }

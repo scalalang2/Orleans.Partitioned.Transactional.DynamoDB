@@ -38,5 +38,51 @@ namespace Orleans.Hosting
         {
             return builder.ConfigureServices(services => services.AddDynamoDBTransactionalStateStorage(name, configureOptions));
         }
+        
+        #region PARTITIONED_STORAGE
+        /// <summary>
+        /// Configure silo to use partitioned dynamodb storage as the default transactional grain storage.
+        /// </summary>
+        public static ISiloBuilder AddDynamoDBPartitionedTransactionalStateStorageAsDefault(this ISiloBuilder builder, Action<DynamoDBTransactionalStorageOptions> configureOptions)
+        {
+            return builder.AddDynamoDBPartitionedTransactionalStateStorage(ProviderConstants.DEFAULT_STORAGE_PROVIDER_NAME, configureOptions);
+        }
+
+        /// <summary>
+        /// Configure silo to use partitioned dynamodb storage for transactional grain storage.
+        /// </summary>
+        public static ISiloBuilder AddDynamoDBPartitionedTransactionalStateStorage(
+            this ISiloBuilder builder,
+            string name,
+            Action<DynamoDBTransactionalStorageOptions> configureOptions)
+        {
+            return builder.ConfigureServices(services =>
+                services.AddDynamoDBPartitionedTransactionalStateStorage(name, ob => ob.Configure(configureOptions)));
+        }
+
+        /// <summary>
+        /// Configure silo to use partitioned dynamodb storage as the default transactional grain storage.
+        /// </summary>
+        public static ISiloBuilder AddDynamoDBPartitionedTransactionalStateStorageAsDefault(
+            this ISiloBuilder builder,
+            Action<OptionsBuilder<DynamoDBTransactionalStorageOptions>> configureOptions = null)
+        {
+            return builder.AddDynamoDBPartitionedTransactionalStateStorage(
+                ProviderConstants.DEFAULT_STORAGE_PROVIDER_NAME,
+                configureOptions);
+        }
+
+        /// <summary>
+        /// Configure silo to use partitioned dynamodb storage for transactional grain storage.
+        /// </summary>
+        public static ISiloBuilder AddDynamoDBPartitionedTransactionalStateStorage(
+            this ISiloBuilder builder,
+            string name,
+            Action<OptionsBuilder<DynamoDBTransactionalStorageOptions>> configureOptions = null)
+        {
+            return builder.ConfigureServices(services =>
+                services.AddDynamoDBPartitionedTransactionalStateStorage(name, configureOptions));
+        }
     }
+    #endregion 
 }

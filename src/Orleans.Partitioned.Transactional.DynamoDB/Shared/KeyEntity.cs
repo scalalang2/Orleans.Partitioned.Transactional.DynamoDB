@@ -1,6 +1,6 @@
 using Amazon.DynamoDBv2.Model;
 
-namespace Orleans.Partitioned.Transactional.DynamoDB.TransactionalState;
+namespace Orleans.Partitioned.Transactional.DynamoDB.Shared;
 
 internal class KeyEntity
 {
@@ -11,7 +11,7 @@ internal class KeyEntity
     {
         this.RowKey = RK;
 
-        if (fields.TryGetValue(DynamoDBTransactionalStateConstants.PARTITION_KEY_PROPERTY_NAME, out var partitionKey))
+        if (fields.TryGetValue(SharedConstants.PARTITION_KEY_PROPERTY_NAME, out var partitionKey))
             this.PartitionKey = partitionKey.S;
 
         if (fields.TryGetValue(COMITTED_SEQUENCE_ID_PROPERTY_NAME, out var committedSequenceId))
@@ -20,10 +20,10 @@ internal class KeyEntity
         if (fields.TryGetValue(METADATA_PROPERTY_NAME, out var metadata))
             this.Metadata = metadata.B.ToArray();
 
-        if (fields.TryGetValue(DynamoDBTransactionalStateConstants.TIMESTAMP_PROPERTY_NAME, out var timestamp))
+        if (fields.TryGetValue(SharedConstants.TIMESTAMP_PROPERTY_NAME, out var timestamp))
             this.Timestamp = DateTimeOffset.FromUnixTimeSeconds(long.Parse(timestamp.N));
 
-        if (fields.TryGetValue(DynamoDBTransactionalStateConstants.ETAG_PROPERTY_NAME, out var etag))
+        if (fields.TryGetValue(SharedConstants.ETAG_PROPERTY_NAME, out var etag))
             this.ETag = int.Parse(etag.N);
     }
 
@@ -51,8 +51,8 @@ internal class KeyEntity
     {
         var item = new Dictionary<string, AttributeValue>
         {
-            { DynamoDBTransactionalStateConstants.PARTITION_KEY_PROPERTY_NAME, new AttributeValue { S = this.PartitionKey } },
-            { DynamoDBTransactionalStateConstants.ROW_KEY_PROPERTY_NAME, new AttributeValue { S = this.RowKey } },
+            { SharedConstants.PARTITION_KEY_PROPERTY_NAME, new AttributeValue { S = this.PartitionKey } },
+            { SharedConstants.ROW_KEY_PROPERTY_NAME, new AttributeValue { S = this.RowKey } },
             { COMITTED_SEQUENCE_ID_PROPERTY_NAME, new AttributeValue { N = this.CommittedSequenceId.ToString() } },
         };
 
@@ -63,12 +63,12 @@ internal class KeyEntity
 
         if (this.Timestamp != default)
         {
-            item[DynamoDBTransactionalStateConstants.TIMESTAMP_PROPERTY_NAME] = new AttributeValue { N = this.Timestamp.ToUnixTimeSeconds().ToString() };
+            item[SharedConstants.TIMESTAMP_PROPERTY_NAME] = new AttributeValue { N = this.Timestamp.ToUnixTimeSeconds().ToString() };
         }
 
         if (this.ETag.HasValue)
         {
-            item[DynamoDBTransactionalStateConstants.ETAG_PROPERTY_NAME] = new AttributeValue { N = this.ETag.Value.ToString() };
+            item[SharedConstants.ETAG_PROPERTY_NAME] = new AttributeValue { N = this.ETag.Value.ToString() };
         }
 
         return item;

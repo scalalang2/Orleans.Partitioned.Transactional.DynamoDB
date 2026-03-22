@@ -4,8 +4,33 @@ using Orleans.Storage;
 
 namespace Orleans.Configuration
 {
-    public class DynamoDBTransactionalStorageOptions : DynamoDBClientOptions, IStorageProviderSerializerOptions
+    public class DynamoDBTransactionalStorageOptions : IStorageProviderSerializerOptions
     {
+        /// <summary>
+        /// AccessKey string for DynamoDB Storage
+        /// </summary>
+        public string AccessKey { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Secret key for DynamoDB storage
+        /// </summary>
+        public string SecretKey { get; set; } = string.Empty;
+
+        /// <summary>
+        /// DynamoDB region name, such as "us-west-2"
+        /// </summary>
+        public string Service { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Token for DynamoDB storage
+        /// </summary>
+        public string Token { get; set; } = string.Empty;
+
+        /// <summary>
+        /// AWS profile name.
+        /// </summary>
+        public string ProfileName { get; set; } = string.Empty;
+        
         /// <summary>
         /// Gets or sets a unique identifier for this service, which should survive deployment and redeployment.
         /// </summary>

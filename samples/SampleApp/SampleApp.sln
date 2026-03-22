@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SampleApp", "SampleApp.csproj", "{30F48605-6DCA-4B85-BC45-0537E2CC2FC5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Orleans.Partitioned.Transactional.DynamoDB", "..\..\src\Orleans.Partitioned.Transactional.DynamoDB\Orleans.Partitioned.Transactional.DynamoDB.csproj", "{E1946394-9162-4918-A8D0-D23AFA3B0AB7}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{30F48605-6DCA-4B85-BC45-0537E2CC2FC5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{30F48605-6DCA-4B85-BC45-0537E2CC2FC5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{30F48605-6DCA-4B85-BC45-0537E2CC2FC5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{30F48605-6DCA-4B85-BC45-0537E2CC2FC5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E1946394-9162-4918-A8D0-D23AFA3B0AB7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E1946394-9162-4918-A8D0-D23AFA3B0AB7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E1946394-9162-4918-A8D0-D23AFA3B0AB7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E1946394-9162-4918-A8D0-D23AFA3B0AB7}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

@@ -1,6 +1,6 @@
-namespace Orleans.Partitioned.Transactional.DynamoDB.TransactionalState;
+﻿namespace Orleans.Partitioned.Transactional.DynamoDB.Shared;
 
-public class DynamoDBTransactionalStateConstants
+internal class SharedConstants
 {
     public const string PARTITION_KEY_PROPERTY_NAME = "PartitionKey";
 
