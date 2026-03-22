@@ -50,7 +50,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
                 "Use DynamoDBTransactionalStateStorage for non-partitioned state.");
 
         (keyType, valueType) = PartitionedStateHelper.GetPartitionTypeArgs(typeof(TState));
-        dictType = typeof(Dictionary<,>).MakeGenericType(keyType, valueType);
+        dictType = typeof(SortedDictionary<,>).MakeGenericType(keyType, valueType);
         var ifaceType = typeof(IPartitionedState<,>).MakeGenericType(keyType, valueType);
         itemsProperty = ifaceType.GetProperty(nameof(IPartitionedState<int, int>.Items))!;
     }
@@ -274,7 +274,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
 
         var (items, partitionSize) = ExtractPartitionedFields(state);
 
-        var partitions = PartitionedStateHelper.SplitIntoPartitions((System.Collections.IDictionary)items, partitionSize, dictType);
+        var partitions = PartitionedStateHelper.SplitIntoPartitions(items, partitionSize, dictType);
 
         var newManifest = new PartitionManifest();
         
@@ -396,14 +396,14 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
 
         // TODO: wrap partitioned entity as specific class (e.g. PartitionEntity<TKey, TValue>);
         var partitionData = await LoadPartitionRowsAsync(manifest);
-        var merged = (System.Collections.IDictionary)Activator.CreateInstance(dictType)!;
+        var merged = (IDictionary)Activator.CreateInstance(dictType)!;
 
         foreach (var (partitionNumber, data) in partitionData)
         {
             if (data != null && data.Length > 0)
             {
-                var partDict = (System.Collections.IDictionary)DeserializeObject(dictType, data);
-                foreach (System.Collections.DictionaryEntry entry in partDict)
+                var partDict = (IDictionary)DeserializeObject(dictType, data);
+                foreach (DictionaryEntry entry in partDict)
                 {
                     merged[entry.Key] = entry.Value;
                 }

@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using System.Security.Cryptography;
+using System.Text;
 using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace Orleans.Partitioned.Transactional.DynamoDB.PartitionedTransactionalState;
@@ -30,8 +31,15 @@ internal static class PartitionedStateHelper
 
     public static uint AssignToPartition<TKey>(TKey key, int partitionSize)
     {
-        var hash = unchecked((uint)key.GetHashCode());
+        var hash = DeterministicHash(key);
         return (hash % (uint)partitionSize) + 1;
+    }
+    
+    private static uint DeterministicHash(object key)
+    {
+        var bytes = Encoding.UTF8.GetBytes(key.ToString()!);
+        var hash = SHA256.HashData(bytes);
+        return BitConverter.ToUInt32(hash, 0);
     }
 
     public static Dictionary<uint, IDictionary> SplitIntoPartitions(IDictionary items, int partitionSize, Type dictType)

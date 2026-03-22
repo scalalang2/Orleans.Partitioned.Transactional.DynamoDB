@@ -19,5 +19,5 @@ public interface IPartitionedState<TKey, TValue> : IPartitionedState
     /// <summary>
     /// The actual data dictionary that will be split across partitions.
     /// </summary>
-    Dictionary<TKey, TValue> Items { get; set; }
+    SortedDictionary<TKey, TValue> Items { get; set; }
 }

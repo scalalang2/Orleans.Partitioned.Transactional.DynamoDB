@@ -88,11 +88,6 @@ if (laptop != null)
 }
 
 Console.WriteLine("\n>>> Deleting P020 (Router)...");
-await inventoryGrain.DeleteItem("P020");
-await inventoryGrain.DeleteItem("P011");
-await inventoryGrain.DeleteItem("P018");
-await inventoryGrain.DeleteItem("P004");
-await inventoryGrain.DeleteItem("P001");
 
 var finalItems = await inventoryGrain.GetAllItems();
 Console.WriteLine($">>> Final item count: {finalItems.Count}");
