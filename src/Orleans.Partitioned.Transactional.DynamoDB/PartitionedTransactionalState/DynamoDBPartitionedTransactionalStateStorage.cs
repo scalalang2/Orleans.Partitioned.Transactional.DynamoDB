@@ -188,11 +188,12 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
             
             // Update key entity (transaction metadata)
             // TODO PartitionManifest도 Key에서 관리하는게 어떨까
+            PartitionManifest? oldManifest = null;
             key.Metadata = Serialize(metadata);
             key.Timestamp = DateTimeOffset.UtcNow;
             if (commitUpTo.HasValue && commitUpTo.Value > key.CommittedSequenceId)
             {
-                var oldManifest = currentManifest;
+                oldManifest = currentManifest;
                 key.CommittedSequenceId = commitUpTo.Value;
 
                 if (FindState(commitUpTo.Value, out var committedPos))
@@ -207,11 +208,6 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
                             committedPartitionSize = tempState.PartitionSize;
                         }
                     }
-                }
-                
-                if (oldManifest?.PartitionToCommitSeq != null && currentManifest?.PartitionToCommitSeq != null)
-                {
-                    await CleanupOrphanPartitions(oldManifest, currentManifest);
                 }
             }
 
@@ -231,6 +227,11 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
                     "ETag = :etag",
                     new Dictionary<string, AttributeValue> { [":etag"] = new AttributeValue { N = existingETag } });
                 LogTraceUpdateKey(partitionKey, KeyEntity.RK, this.key.CommittedSequenceId, metadata.CommitRecords.Count);
+            }
+            
+            if (oldManifest != null)
+            {
+                await CleanupOrphanPartitions(oldManifest, currentManifest);
             }
             
             // delete obsolete states and their orphan partitions
@@ -280,6 +281,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
         
         var rebalanceNeeded = currentManifest == null || this.committedPartitionSize != partitionSize;
 
+        // TODO : 파티션 저장 단계에서는 성공한 뒤, StateEntity에서 실패한다면 정리되지 않는 Partition Row가 발생함
         foreach (var (partitionNumber, partitionData) in partitions)
         {
             var serializedPartition = SerializeObject(partitionData);
