@@ -412,7 +412,8 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
             }
             else
             {
-                LogWarningMissingPartition(this.partitionKey, partitionNumber, manifest.PartitionToCommitSeq[partitionNumber]);
+                LogErrorMissingPartition(this.partitionKey, partitionNumber, manifest.PartitionToCommitSeq[partitionNumber]);
+                throw new Exception($"Missing partition {partitionNumber} at sequence {manifest.PartitionToCommitSeq[partitionNumber]} for grain {this.partitionKey}");
             }
         }
         
@@ -749,8 +750,8 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
     [LoggerMessage(Level = LogLevel.Trace, Message = "{PartitionKey}.{RowKey} Wrote partition {PartitionNumber}")]
     private partial void LogTracePartitionWrite(string partitionKey, string rowKey, uint partitionNumber);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "{PartitionKey} Missing partition entity: partition={PartitionNumber} commitSeq={CommitSeq}")]
-    private partial void LogWarningMissingPartition(string partitionKey, uint partitionNumber, long commitSeq);
+    [LoggerMessage(Level = LogLevel.Error, Message = "{PartitionKey} Missing partition entity: partition={PartitionNumber} commitSeq={CommitSeq}")]
+    private partial void LogErrorMissingPartition(string partitionKey, uint partitionNumber, long commitSeq);
 
     #endregion
 }
