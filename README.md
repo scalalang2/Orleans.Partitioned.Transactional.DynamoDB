@@ -33,6 +33,36 @@ A partitioned state store its value as below, It consists of `header` and `parti
       - `long commit sequence` indicates that what sequenced state should be used.
       - `long partition` indicates which partition should be loaded.
 
+### Example of the storage layout
+```
+[BASE PK]
+inventory/warehouse_default_inventory
+    |
+    +-- key -------------------------------> "latest committed seq = 3"
+    |
+    +-- state_0001 ------------------------> state v1 (old state will be deleted)
+    +-- state_0002 ------------------------> state v2 (old state will be deleted)
+    +-- state_0003 ------------------------> state v3
+                                             manifest:
+                                                p1 -> v3
+                                                p2 -> v2
+                                                p5 -> v3
+                                                p6 -> v1
+
+[PARTITION PKs]
+inventory/warehouse_default_inventory_p1
+    +-- state_0002 (old state will be deleted)
+    +-- state_0003
+
+inventory/warehouse_default_inventory_p2
+    +-- state_0002
+
+inventory/warehouse_default_inventory_p5
+    +-- state_0003
+
+inventory/warehouse_default_inventory_p6
+    +-- state_0001
+```
   
 ## Storage Engine
 - The Storage Engine must prune all orphan partition data. e.g. all partitions lower committed sequence in the partition manifest of committed state
