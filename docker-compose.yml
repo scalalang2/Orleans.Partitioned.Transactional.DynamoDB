@@ -6,10 +6,19 @@ services:
     command: "-jar DynamoDBLocal.jar -sharedDb"
 
   dynamodb-admin:
-    image: aaronshaf/dynamodb-admin
+    image: aaronshaf/dynamodb-admin:4.6.2
     ports:
       - "8001:8001"
     environment:
       DYNAMO_ENDPOINT: http://dynamodb:8000
     depends_on:
       - dynamodb
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"

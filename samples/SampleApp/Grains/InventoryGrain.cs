@@ -1,4 +1,4 @@
-﻿using Orleans.Transactions.Abstractions;
+using Orleans.Transactions.Abstractions;
 using SampleApp.Abstractions;
 
 namespace SampleApp.Grains;
