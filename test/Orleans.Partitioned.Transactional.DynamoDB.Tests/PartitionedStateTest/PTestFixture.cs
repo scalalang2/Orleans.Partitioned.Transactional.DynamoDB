@@ -1,20 +1,19 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Orleans.TestingHost;
 using Orleans.Transactions.TestKit;
 
-namespace Orleans.Partitioned.Transactional.DynamoDB.Tests;
+namespace Orleans.Partitioned.Transactional.DynamoDB.Tests.PartitionedStateTest;
 
-public class TestFixture : IAsyncLifetime
+public class PTestFixture : IAsyncLifetime
 {
     private TestCluster? _cluster;
-
     public TestCluster Cluster => _cluster ?? throw new InvalidOperationException("Cluster not initialized");
     public IGrainFactory GrainFactory => Cluster.GrainFactory;
-
+    
     public async Task InitializeAsync()
     {
         var builder = new TestClusterBuilder();
-        builder.AddSiloBuilderConfigurator<SiloBuilderConfigurator>();
+        builder.AddSiloBuilderConfigurator<SiloConfigurator>();
         _cluster = builder.Build();
         await _cluster.DeployAsync();
     }
@@ -27,10 +26,8 @@ public class TestFixture : IAsyncLifetime
             await _cluster.DisposeAsync();
         }
     }
-
-    public void EnsurePreconditionsMet() { }
-
-    public class SiloBuilderConfigurator : ISiloConfigurator
+    
+    public class SiloConfigurator : ISiloConfigurator
     {
         public void Configure(ISiloBuilder hostBuilder)
         {
@@ -38,12 +35,12 @@ public class TestFixture : IAsyncLifetime
                 .ConfigureServices(services =>
                     services.AddKeyedSingleton<IRemoteCommitService, RemoteCommitService>(
                         TransactionTestConstants.RemoteCommitService))
-                .AddDynamoDBTransactionalStateStorage(TransactionTestConstants.TransactionStore, options =>
+                .AddDynamoDBPartitionedTransactionalStateStorage("PartitionedTransactionStore", options =>
                 {
                     options.Service = "http://localhost:8000";
                     options.AccessKey = "fake";
                     options.SecretKey = "fake";
-                    options.TableName = "OrleansTransactionTest";
+                    options.TableName = "OrleansPartitionedTransactionTest";
                     options.UseProvisionedThroughput = false;
                     options.CreateIfNotExists = true;
                 })
