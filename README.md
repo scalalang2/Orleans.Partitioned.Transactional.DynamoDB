@@ -104,3 +104,8 @@ public class InventoryGrain : Grain, IInventoryGrain
     ...
 }
 ```
+
+## Package
+```sh
+$ dotnet pack -c Release -p:PackageVersion=10.0.0
+```

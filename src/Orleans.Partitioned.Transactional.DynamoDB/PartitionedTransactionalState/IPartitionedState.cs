@@ -1,4 +1,6 @@
-﻿namespace Orleans.Partitioned.Transactional.DynamoDB.PartitionedTransactionalState;
+﻿using System.Collections.Generic;
+
+namespace Orleans.Partitioned.Transactional.DynamoDB.PartitionedTransactionalState;
 
 public interface IPartitionedState
 {

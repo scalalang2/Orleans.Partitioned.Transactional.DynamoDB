@@ -1,4 +1,6 @@
-﻿namespace Orleans.Partitioned.Transactional.DynamoDB.PartitionedTransactionalState;
+﻿using System.Collections.Generic;
+
+namespace Orleans.Partitioned.Transactional.DynamoDB.PartitionedTransactionalState;
 
 /// <summary>
 /// Manifest stored in the header row's GrainState field for partitioned states.

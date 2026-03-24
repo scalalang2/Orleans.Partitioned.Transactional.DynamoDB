@@ -1,5 +1,6 @@
 using Orleans.Partitioned.Transactional.DynamoDB.Internal;
 using Orleans.Persistence.DynamoDB;
+using Orleans.Runtime;
 using Orleans.Storage;
 
 namespace Orleans.Configuration
@@ -9,11 +10,13 @@ namespace Orleans.Configuration
         /// <summary>
         /// AccessKey string for DynamoDB Storage
         /// </summary>
+        [Redact]
         public string AccessKey { get; set; } = string.Empty;
 
         /// <summary>
         /// Secret key for DynamoDB storage
         /// </summary>
+        [Redact]
         public string SecretKey { get; set; } = string.Empty;
 
         /// <summary>

@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
 using Amazon.DynamoDBv2.Model;
 
 namespace Orleans.Partitioned.Transactional.DynamoDB.Shared;
