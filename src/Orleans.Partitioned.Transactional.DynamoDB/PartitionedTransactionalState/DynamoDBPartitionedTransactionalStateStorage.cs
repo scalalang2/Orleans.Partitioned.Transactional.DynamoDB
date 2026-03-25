@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Amazon.DynamoDBv2.Model;
 using Microsoft.Extensions.Logging;
 using Orleans.Configuration;
+using Orleans.Partitioned.Transactional.DynamoDB.Compression;
 using Orleans.Partitioned.Transactional.DynamoDB.Internal;
 using Orleans.Partitioned.Transactional.DynamoDB.Shared;
 using Orleans.Storage;
@@ -23,6 +24,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
     private readonly string tableName;
     private readonly string partitionKey; // main state PK: <grainId>/<grainType>_<serviceId>_<stateName>
     private readonly IGrainStorageSerializer serializer;
+    private readonly IDataCompressor compressor;
     private readonly ILogger<DynamoDBPartitionedTransactionalStateStorage<TState>> logger;
 
     private readonly Type keyType;
@@ -46,6 +48,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
         this.tableName = options.TableName;
         this.partitionKey = partitionKey;
         this.serializer = options.GrainStorageSerializer;
+        this.compressor = options.UseCompression ? DataCompressorFactory.Create(options.CompressionAlgorithm) : null;
         this.logger = logger;
 
         if (!PartitionedStateHelper.IsPartitionedState(typeof(TState)))
@@ -110,7 +113,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
                 if (kvp.Value.TransactionManager.Length == 0)
                     break;
 
-                var tm = Deserialize<ParticipantId>(kvp.Value.TransactionManager);
+                var tm = DeserializeRaw<ParticipantId>(kvp.Value.TransactionManager);
                 pendingRecords.Add(new PendingTransactionState<TState>()
                 {
                     SequenceId = kvp.Key,
@@ -128,7 +131,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
                 entity.State = []; // clear the state to free memory
             }
 
-            var metadata = Deserialize<TransactionalStateMetaData>(this.key.Metadata);
+            var metadata = DeserializeRaw<TransactionalStateMetaData>(this.key.Metadata);
             return new TransactionalStorageLoadResponse<TState>(this.key.ETag.ToString(), committedState,
                 this.key.CommittedSequenceId, metadata, pendingRecords);
         }
@@ -193,7 +196,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
             // Update key entity (transaction metadata)
             // TODO PartitionManifest도 Key에서 관리하는게 어떨까
             PartitionManifest? oldManifest = null;
-            key.Metadata = Serialize(metadata);
+            key.Metadata = SerializeRaw(metadata);
             key.Timestamp = DateTimeOffset.UtcNow;
             if (commitUpTo.HasValue && commitUpTo.Value > key.CommittedSequenceId)
             {
@@ -205,12 +208,12 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
                     var committedState = states[committedPos].Value;
                     if (committedState.PartitionManifest is { Length: > 0 })
                     {
-                        currentManifest = Deserialize<PartitionManifest>(committedState.PartitionManifest);
+                        currentManifest = DecompressAndDeserialize<PartitionManifest>(committedState.PartitionManifest);
                     }
 
                     if (committedState.State is { Length: > 0 })
                     {
-                        var tempState = Deserialize<TState>(committedState.State);
+                        var tempState = DecompressAndDeserialize<TState>(committedState.State);
                         if (tempState != null)
                         {
                             committedPartitionSize = tempState.PartitionSize;
@@ -292,7 +295,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
         // TODO : 파티션 저장 단계에서는 성공한 뒤, StateEntity에서 실패한다면 정리되지 않는 Partition Row가 발생함
         foreach (var (partitionNumber, partitionData) in partitions)
         {
-            var serializedPartition = SerializeObject(partitionData);
+            var serializedPartition = CompressAndSerializeObject(partitionData);
             var hash = PartitionedStateHelper.ComputeHash(serializedPartition);
 
             var isChanged = rebalanceNeeded
@@ -331,8 +334,8 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
         // TODO: 저장소에는 Items를 저장하지 않기 위한 방법이지만, 접근법이 마음데 들진 않는다.
         // 직렬화 단계에서 Items만 무시하고 직렬화 하는 함수를 정의하면 어떨까
         ClearItems(state);
-        var payload = Serialize(state);
-        var manifestPayload = Serialize(newManifest);
+        var payload = CompressAndSerialize(state);
+        var manifestPayload = CompressAndSerialize(newManifest);
         SetItems(state, savedItems); // restore items
 
         if (FindState(pendingState.SequenceId, out var pos))
@@ -341,7 +344,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
             var currentETag = existing.ETag.ToString();
             existing.TransactionId = pendingState.TransactionId;
             existing.TransactionTimestamp = pendingState.TimeStamp;
-            existing.TransactionManager = Serialize(pendingState.TransactionManager);
+            existing.TransactionManager = SerializeRaw(pendingState.TransactionManager);
             existing.State = payload;
             existing.PartitionManifest = manifestPayload;
             existing.ETag = existing.ETag + 1;
@@ -367,7 +370,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
                 RowKey = StateEntity.MakeRowKey(pendingState.SequenceId),
                 TransactionId = pendingState.TransactionId,
                 TransactionTimestamp = pendingState.TimeStamp,
-                TransactionManager = Serialize(pendingState.TransactionManager),
+                TransactionManager = SerializeRaw(pendingState.TransactionManager),
                 State = payload,
                 PartitionManifest = manifestPayload,
                 ETag = 0,
@@ -385,14 +388,14 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
     /// </summary>
     private async Task<TState> ReassembleStateAsync(StateEntity stateEntity, bool updateCurrentCommittedState = false)
     {
-        var state = Deserialize<TState>(stateEntity.State);
+        var state = DecompressAndDeserialize<TState>(stateEntity.State);
         if (state == null)
         {
             state = new TState();
         }
 
-        var manifest = stateEntity.PartitionManifest is { Length: > 0 } 
-            ? Deserialize<PartitionManifest>(stateEntity.PartitionManifest) 
+        var manifest = stateEntity.PartitionManifest is { Length: > 0 }
+            ? DecompressAndDeserialize<PartitionManifest>(stateEntity.PartitionManifest)
             : new PartitionManifest();
 
         if (updateCurrentCommittedState)
@@ -414,7 +417,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
         {
             if (data != null && data.Length > 0)
             {
-                var partDict = (IDictionary)DeserializeObject(dictType, data);
+                var partDict = (IDictionary)DecompressAndDeserializeObject(dictType, data);
                 foreach (DictionaryEntry entry in partDict)
                 {
                     merged[entry.Key] = entry.Value;
@@ -581,7 +584,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
 
         try
         {
-            var manifest = Deserialize<PartitionManifest>(stateEntity.PartitionManifest);
+            var manifest = DecompressAndDeserialize<PartitionManifest>(stateEntity.PartitionManifest);
             if (manifest == null)
             {
                 return;
@@ -622,7 +625,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
 
         try
         {
-            var oldManifest = Deserialize<PartitionManifest>(stateEntity.PartitionManifest);
+            var oldManifest = DecompressAndDeserialize<PartitionManifest>(stateEntity.PartitionManifest);
             if (oldManifest == null) return;
             
             var keysToDelete = new List<Dictionary<string, AttributeValue>>();
@@ -681,7 +684,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
         return false;
     }
     
-    private T Deserialize<T>(byte[] value)
+    private T DeserializeRaw<T>(byte[] value)
     {
         T dataValue = default;
         try
@@ -706,22 +709,59 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
 
         return dataValue;
     }
-    
-    private byte[] Serialize<T>(T value) => this.serializer.Serialize(value).ToArray();
-    
-    private byte[] SerializeObject(object value)
+
+    private T DecompressAndDeserialize<T>(byte[] value)
+    {
+        T dataValue = default;
+        try
+        {
+            if (value is { Length: > 0 })
+            {
+                var data = this.compressor != null ? this.compressor.Decompress(value) : value;
+                dataValue = this.serializer.Deserialize<T>(data);
+            }
+        }
+        catch (Exception exc)
+        {
+            var sb = new StringBuilder();
+            sb.AppendFormat("Unable to deserialize the vlaue");
+
+            if (dataValue != null)
+            {
+                sb.Append($"Data Value={dataValue} Type={dataValue.GetType()}");
+            }
+
+            var message = sb.ToString();
+            LogError(logger, message);
+            throw new AggregateException(message, exc);
+        }
+
+        return dataValue;
+    }
+
+    private byte[] SerializeRaw<T>(T value) => this.serializer.Serialize(value).ToArray();
+
+    private byte[] CompressAndSerialize<T>(T value)
+    {
+        var data = this.serializer.Serialize(value).ToArray();
+        return this.compressor != null ? this.compressor.Compress(data) : data;
+    }
+
+    private byte[] CompressAndSerializeObject(object value)
     {
         var method = typeof(IGrainStorageSerializer).GetMethod(nameof(IGrainStorageSerializer.Serialize))!
             .MakeGenericMethod(value.GetType());
         var result = (BinaryData)method.Invoke(this.serializer, [value]);
-        return result.ToArray();
+        var data = result.ToArray();
+        return this.compressor != null ? this.compressor.Compress(data) : data;
     }
 
-    private object DeserializeObject(Type type, byte[] data)
+    private object DecompressAndDeserializeObject(Type type, byte[] data)
     {
+        var decompressed = this.compressor != null ? this.compressor.Decompress(data) : data;
         var method = typeof(IGrainStorageSerializer).GetMethod(nameof(IGrainStorageSerializer.Deserialize))!
             .MakeGenericMethod(type);
-        return method.Invoke(this.serializer, [new BinaryData(data)]);
+        return method.Invoke(this.serializer, [new BinaryData(decompressed)]);
     }
     
     #region Logging

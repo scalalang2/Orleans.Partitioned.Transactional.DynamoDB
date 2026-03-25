@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Amazon.DynamoDBv2.Model;
 using Microsoft.Extensions.Logging;
 using Orleans.Configuration;
+using Orleans.Partitioned.Transactional.DynamoDB.Compression;
 using Orleans.Partitioned.Transactional.DynamoDB.Internal;
 using Orleans.Partitioned.Transactional.DynamoDB.Shared;
 using Orleans.Persistence.DynamoDB;
@@ -22,6 +23,7 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
     private readonly string tableName;
     private readonly string partitionKey;
     private readonly IGrainStorageSerializer serializer;
+    private readonly IDataCompressor compressor;
     private readonly ILogger<DynamoDBTransactionalStateStorage<TState>> logger;
 
     // Caches loaded data for this storage instance
@@ -35,6 +37,7 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
         this.tableName = options.TableName;
         this.partitionKey = partitionKey;
         this.serializer = options.GrainStorageSerializer;
+        this.compressor = options.UseCompression ? DataCompressorFactory.Create(options.CompressionAlgorithm) : null;
         this.logger = logger;
     }
 
@@ -86,7 +89,7 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
                 if (kvp.Value.TransactionManager.Length == 0)
                     break;
 
-                ParticipantId tm = this.ConvertFromStorageFormat<ParticipantId>(kvp.Value.TransactionManager);
+                ParticipantId tm = this.DeserializeRaw<ParticipantId>(kvp.Value.TransactionManager);
 
                 PrepareRecordsToRecover.Add(new PendingTransactionState<TState>()
                 {
@@ -105,7 +108,7 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
                 entity.State = []; // clear the state to free memory
             }
 
-            TransactionalStateMetaData metadata = this.ConvertFromStorageFormat<TransactionalStateMetaData>(this.key.Metadata);
+            TransactionalStateMetaData metadata = this.DeserializeRaw<TransactionalStateMetaData>(this.key.Metadata);
             return new TransactionalStorageLoadResponse<TState>(this.key.ETag.ToString(), committedState, this.key.CommittedSequenceId, metadata, PrepareRecordsToRecover);
         }
         catch (Exception ex)
@@ -166,8 +169,8 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
                             var currentETag = existing.ETag.ToString();
                             existing.TransactionId = s.TransactionId;
                             existing.TransactionTimestamp = s.TimeStamp;
-                            existing.TransactionManager = this.ConvertToStorageFormat(s.TransactionManager);
-                            existing.SetState(s.State, this.serializer);
+                            existing.TransactionManager = this.SerializeRaw(s.TransactionManager);
+                            existing.State = this.CompressAndSerialize(s.State);
                             existing.ETag = existing.ETag + 1;
 
                             await this.storage.UpsertEntryAsync(
@@ -184,7 +187,17 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
                         }
                         else
                         {
-                            var entity = StateEntity.Create(this.serializer, this.partitionKey, s);
+                            var entity = new StateEntity
+                            {
+                                PartitionKey = this.partitionKey,
+                                RowKey = StateEntity.MakeRowKey(s.SequenceId),
+                                TransactionId = s.TransactionId,
+                                TransactionTimestamp = s.TimeStamp,
+                                TransactionManager = this.SerializeRaw(s.TransactionManager),
+                                State = this.CompressAndSerialize(s.State),
+                                ETag = 0,
+                            };
+
                             await this.storage.PutEntryAsync(
                                 tableName,
                                 entity.ToStorageFormat());
@@ -196,7 +209,7 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
                 }
 
             // third, persist metadata and commit position
-            key.Metadata = this.ConvertToStorageFormat(metadata);
+            key.Metadata = this.SerializeRaw(metadata);
             key.Timestamp = DateTimeOffset.UtcNow;
             if (commitUpTo.HasValue && commitUpTo.Value > key.CommittedSequenceId)
             {
@@ -331,7 +344,10 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
         try
         {
             if (entity.State is { Length: > 0 })
-                dataValue = this.serializer.Deserialize<T>(entity.State);
+            {
+                var data = this.compressor != null ? this.compressor.Decompress(entity.State) : entity.State;
+                dataValue = this.serializer.Deserialize<T>(data);
+            }
         }
         catch (Exception exc)
         {
@@ -351,7 +367,7 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
         return dataValue;
     }
 
-    private T ConvertFromStorageFormat<T>(byte[] value)
+    private T DeserializeRaw<T>(byte[] value)
     {
         T dataValue = default;
 
@@ -370,7 +386,13 @@ public partial class DynamoDBTransactionalStateStorage<TState> : ITransactionalS
         return dataValue;
     }
 
-    private byte[] ConvertToStorageFormat<T>(T value) => this.serializer.Serialize(value).ToArray();
+    private byte[] SerializeRaw<T>(T value) => this.serializer.Serialize(value).ToArray();
+
+    private byte[] CompressAndSerialize<T>(T value)
+    {
+        var data = this.serializer.Serialize(value).ToArray();
+        return this.compressor != null ? this.compressor.Compress(data) : data;
+    }
 
     private bool FindState(long sequenceId, out int pos)
     {

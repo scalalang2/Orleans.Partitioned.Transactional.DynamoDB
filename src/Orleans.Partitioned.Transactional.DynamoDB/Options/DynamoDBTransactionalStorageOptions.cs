@@ -1,3 +1,4 @@
+using Orleans.Partitioned.Transactional.DynamoDB.Compression;
 using Orleans.Partitioned.Transactional.DynamoDB.Internal;
 using Orleans.Persistence.DynamoDB;
 using Orleans.Runtime;
@@ -77,6 +78,17 @@ namespace Orleans.Configuration
         public const int DEFAULT_INIT_STAGE = ServiceLifecycleStage.ApplicationServices;
 
         public IGrainStorageSerializer GrainStorageSerializer { get; set; }
+
+        /// <summary>
+        /// Enable compression for serialized state data.
+        /// </summary>
+        public bool UseCompression { get; set; } = false;
+
+        /// <summary>
+        /// Compression algorithm to use when <see cref="UseCompression"/> is true.
+        /// Supported values: Zstd, Gzip, Zlib.
+        /// </summary>
+        public CompressionAlgorithm CompressionAlgorithm { get; set; } = CompressionAlgorithm.Zstd;
     }
 
     /// <summary>
