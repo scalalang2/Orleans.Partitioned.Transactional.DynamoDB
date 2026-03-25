@@ -43,7 +43,6 @@ public class InventoryGrain(
         await state.PerformUpdate(s =>
         {
             s.PartitionSize = partitionSize;
-            s.Manifest = new();
             s.Items = new SortedDictionary<string, InventoryItem>(items);
         });
     }

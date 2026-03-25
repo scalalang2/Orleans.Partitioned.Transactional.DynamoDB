@@ -53,7 +53,7 @@ internal class PartitionEntity
         => $"{basePartitionKey}_p{partitionNumber}";
 
     /// <summary>
-    /// Builds the RowKey for a partition row. Same format as header rows.
+    /// Builds the RowKey for a partition row. Same format as other state rows.s
     /// Format: state_{seq:x16}
     /// </summary>
     public static string MakeRowKey(long sequenceId)

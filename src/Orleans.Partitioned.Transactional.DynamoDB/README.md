@@ -33,19 +33,12 @@ builder.UseOrleans(silo =>
 [GenerateSerializer]
 public class InventoryState : IPartitionedState<string, InventoryItem>
 {
-    [Id(0)]
-    public int PartitionSize { get; set; } = 16;
+    [Id(0)] 
+    public int PartitionSize { get; set; } = 3;
 
-    [Id(1)]
-    public PartitionManifest Manifest { get; set; } = new();
-
-    [Id(2)]
+    [Id(1)] 
     public SortedDictionary<string, InventoryItem> Items { get; set; } = new();
-
-    [Id(3)]
-    public string WarehouseName { get; set; } = string.Empty;
 }
-
 ```
 
 The Grain implementation follows the standard Orleans transactional pattern.
@@ -61,5 +54,4 @@ public class InventoryGrain(
     public Task<InventoryItem?> GetItem(string itemId) =>
         state.PerformRead(s => s.Items.TryGetValue(itemId, out var item) ? item : null);
 }
-
 ```

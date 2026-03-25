@@ -1,4 +1,4 @@
-﻿using Orleans.Partitioned.Transactional.DynamoDB.PartitionedTransactionalState;
+using Orleans.Partitioned.Transactional.DynamoDB.PartitionedTransactionalState;
 
 namespace Orleans.Partitioned.Transactional.DynamoDB.Tests.PartitionedStateTest.Grains;
 
@@ -9,8 +9,5 @@ public class TestState : IPartitionedState<string, int>
     public int PartitionSize { get; set; } = 3;
     
     [Id(1)] 
-    public PartitionManifest Manifest { get; set; } = new();
-    
-    [Id(2)] 
     public SortedDictionary<string, int> Items { get; set; } = new();
 }

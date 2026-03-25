@@ -8,6 +8,8 @@ internal class SharedConstants
 
     public const string BINARY_STATE_PROPERTY_NAME = "GrainState";
 
+    public const string MANIFEST_PROPERTY_NAME = "PartitionManifest";
+
     public const string ETAG_PROPERTY_NAME = "ETag";
 
     public const string TIMESTAMP_PROPERTY_NAME = "Timestamp";

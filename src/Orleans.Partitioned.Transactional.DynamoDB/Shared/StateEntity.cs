@@ -42,6 +42,9 @@ internal class StateEntity
         if (fields.TryGetValue(SharedConstants.BINARY_STATE_PROPERTY_NAME, out var state))
             this.State = state.B.ToArray();
 
+        if (fields.TryGetValue(SharedConstants.MANIFEST_PROPERTY_NAME, out var manifest))
+            this.PartitionManifest = manifest.B.ToArray();
+
         if (fields.TryGetValue(SharedConstants.ETAG_PROPERTY_NAME, out var etag))
             this.ETag = int.Parse(etag.N);
     }
@@ -84,11 +87,18 @@ internal class StateEntity
 
     public byte[] State { get; set; }
 
+    public byte[] PartitionManifest { get; set; }
+
     public long? ETag { get; set; }
 
     public void SetState<TState>(TState state, IGrainStorageSerializer serializer) where TState : class, new()
     {
         this.State = state == null ? null : serializer.Serialize(state).ToArray();
+    }
+
+    public void SetManifest(object manifest, IGrainStorageSerializer serializer)
+    {
+        this.PartitionManifest = manifest == null ? null : serializer.Serialize(manifest).ToArray();
     }
 
     public Dictionary<string, AttributeValue> ToStorageFormat()
@@ -101,6 +111,9 @@ internal class StateEntity
 
         if (this.State is { Length: > 0 })
             item[SharedConstants.BINARY_STATE_PROPERTY_NAME] = new AttributeValue { B = new MemoryStream(this.State) };
+
+        if (this.PartitionManifest is { Length: > 0 })
+            item[SharedConstants.MANIFEST_PROPERTY_NAME] = new AttributeValue { B = new MemoryStream(this.PartitionManifest) };
 
         if (!string.IsNullOrEmpty(this.TransactionId))
             item[TRANSACTION_ID_PROPERTY_NAME] = new AttributeValue { S = this.TransactionId };
@@ -132,6 +145,9 @@ internal class StateEntity
 
         if (this.State != null)
             item[SharedConstants.BINARY_STATE_PROPERTY_NAME] = new AttributeValue { B = new MemoryStream(this.State) };
+
+        if (this.PartitionManifest != null)
+            item[SharedConstants.MANIFEST_PROPERTY_NAME] = new AttributeValue { B = new MemoryStream(this.PartitionManifest) };
 
         if (!string.IsNullOrEmpty(this.TransactionId))
             item[TRANSACTION_ID_PROPERTY_NAME] = new AttributeValue { S = this.TransactionId };

@@ -203,12 +203,16 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
                 if (FindState(commitUpTo.Value, out var committedPos))
                 {
                     var committedState = states[committedPos].Value;
+                    if (committedState.PartitionManifest is { Length: > 0 })
+                    {
+                        currentManifest = Deserialize<PartitionManifest>(committedState.PartitionManifest);
+                    }
+
                     if (committedState.State is { Length: > 0 })
                     {
                         var tempState = Deserialize<TState>(committedState.State);
                         if (tempState != null)
                         {
-                            currentManifest = tempState.Manifest ?? new PartitionManifest();
                             committedPartitionSize = tempState.PartitionSize;
                         }
                     }
@@ -291,16 +295,14 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
             var serializedPartition = SerializeObject(partitionData);
             var hash = PartitionedStateHelper.ComputeHash(serializedPartition);
 
-            newManifest.PartitionHashCodes[partitionNumber] = hash;
-
             var isChanged = rebalanceNeeded
-                            || currentManifest?.PartitionHashCodes == null
-                            || !currentManifest.PartitionHashCodes.TryGetValue(partitionNumber, out var oldHash)
-                            || oldHash != hash;
+                            || currentManifest?.PartitionInfos == null
+                            || !currentManifest.PartitionInfos.TryGetValue(partitionNumber, out var oldInfo)
+                            || oldInfo.HashCode != hash;
 
             if (isChanged)
             {
-                newManifest.PartitionToCommitSeq[partitionNumber] = pendingState.SequenceId;
+                newManifest.PartitionInfos[partitionNumber] = new PartitionInfo { CommitSeq = pendingState.SequenceId, HashCode = hash };
 
                 var partitionEntity = new PartitionEntity
                 {
@@ -316,21 +318,21 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
             else
             {
                 // Unchanged
-                if (currentManifest?.PartitionToCommitSeq != null &&
-                    currentManifest.PartitionToCommitSeq.TryGetValue(partitionNumber, out var oldSeq))
+                if (currentManifest?.PartitionInfos != null &&
+                    currentManifest.PartitionInfos.TryGetValue(partitionNumber, out oldInfo))
                 {
-                    newManifest.PartitionToCommitSeq[partitionNumber] = oldSeq;
+                    newManifest.PartitionInfos[partitionNumber] = oldInfo;
                 }
             }
         }
 
         var savedItems = GetItems(state);
-        state.Manifest = newManifest;
         
         // TODO: 저장소에는 Items를 저장하지 않기 위한 방법이지만, 접근법이 마음데 들진 않는다.
         // 직렬화 단계에서 Items만 무시하고 직렬화 하는 함수를 정의하면 어떨까
         ClearItems(state);
         var payload = Serialize(state);
+        var manifestPayload = Serialize(newManifest);
         SetItems(state, savedItems); // restore items
 
         if (FindState(pendingState.SequenceId, out var pos))
@@ -341,6 +343,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
             existing.TransactionTimestamp = pendingState.TimeStamp;
             existing.TransactionManager = Serialize(pendingState.TransactionManager);
             existing.State = payload;
+            existing.PartitionManifest = manifestPayload;
             existing.ETag = existing.ETag + 1;
 
             await this.storage.UpsertEntryAsync(
@@ -366,6 +369,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
                 TransactionTimestamp = pendingState.TimeStamp,
                 TransactionManager = Serialize(pendingState.TransactionManager),
                 State = payload,
+                PartitionManifest = manifestPayload,
                 ETag = 0,
             };
 
@@ -387,7 +391,9 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
             state = new TState();
         }
 
-        var manifest = state.Manifest ?? new PartitionManifest();
+        var manifest = stateEntity.PartitionManifest is { Length: > 0 } 
+            ? Deserialize<PartitionManifest>(stateEntity.PartitionManifest) 
+            : new PartitionManifest();
 
         if (updateCurrentCommittedState)
         {
@@ -395,7 +401,7 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
             committedPartitionSize = state.PartitionSize;
         }
 
-        if (manifest.PartitionToCommitSeq.Count == 0)
+        if (manifest.PartitionInfos.Count == 0)
         {
             return state;
         }
@@ -416,8 +422,9 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
             }
             else
             {
-                LogErrorMissingPartition(this.partitionKey, partitionNumber, manifest.PartitionToCommitSeq[partitionNumber]);
-                throw new Exception($"Missing partition {partitionNumber} at sequence {manifest.PartitionToCommitSeq[partitionNumber]} for grain {this.partitionKey}");
+                var commitSeq = manifest.PartitionInfos[partitionNumber].CommitSeq;
+                LogErrorMissingPartition(this.partitionKey, partitionNumber, commitSeq);
+                throw new Exception($"Missing partition {partitionNumber} at sequence {commitSeq} for grain {this.partitionKey}");
             }
         }
         
@@ -431,10 +438,10 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
         var result = new List<(uint partitionNumber, byte[] data)>();
 
         var keysToRead = new List<(uint num, Dictionary<string, AttributeValue> keys)>();
-        foreach (var (partNum, commitSeq) in manifest.PartitionToCommitSeq)
+        foreach (var (partNum, info) in manifest.PartitionInfos)
         {
             var pk = PartitionEntity.MakePartitionKey(this.partitionKey, partNum);
-            var rk = PartitionEntity.MakeRowKey(commitSeq);
+            var rk = PartitionEntity.MakeRowKey(info.CommitSeq);
             keysToRead.Add((partNum, MakeKeyAttributes(pk, rk)));
         }
 
@@ -539,24 +546,24 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
     {
         var keysToDelete = new List<Dictionary<string, AttributeValue>>();
 
-        foreach (var (pNumber, oldSeq) in oldManifest.PartitionToCommitSeq)
+        foreach (var (pNumber, oldInfo) in oldManifest.PartitionInfos)
         {
-            if (newManifest.PartitionToCommitSeq.TryGetValue(pNumber, out var newSeq))
+            if (newManifest.PartitionInfos.TryGetValue(pNumber, out var newInfo))
             {
-                if (newSeq == oldSeq)
+                if (newInfo.CommitSeq == oldInfo.CommitSeq)
                 {
                     continue;
                 }
                 
                 var pk = PartitionEntity.MakePartitionKey(this.partitionKey, pNumber);
-                var rk = PartitionEntity.MakeRowKey(oldSeq);
+                var rk = PartitionEntity.MakeRowKey(oldInfo.CommitSeq);
                 keysToDelete.Add(MakeKeyAttributes(pk, rk));
             }
             else
             {
                 // Partition was removed entirely
                 var pk = PartitionEntity.MakePartitionKey(this.partitionKey, pNumber);
-                var rk = PartitionEntity.MakeRowKey(oldSeq);
+                var rk = PartitionEntity.MakeRowKey(oldInfo.CommitSeq);
                 keysToDelete.Add(MakeKeyAttributes(pk, rk));
             }
         }
@@ -570,12 +577,11 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
     
     private async Task DeletePartitionsOfAbortedEntity(StateEntity stateEntity)
     {
-        if (stateEntity.State is not { Length: > 0 }) return;
+        if (stateEntity.PartitionManifest is not { Length: > 0 }) return;
 
         try
         {
-            var state = Deserialize<TState>(stateEntity.State);
-            var manifest = state != null ? state.Manifest : null;
+            var manifest = Deserialize<PartitionManifest>(stateEntity.PartitionManifest);
             if (manifest == null)
             {
                 return;
@@ -583,16 +589,16 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
 
             var keysToDelete = new List<Dictionary<String, AttributeValue>>();
 
-            foreach (var (partNum, commitSeq) in manifest.PartitionToCommitSeq)
+            foreach (var (partNum, info) in manifest.PartitionInfos)
             {
                 // delete only if partition's sequenceId is equal to sequenceId to be removed.
-                if (commitSeq != stateEntity.SequenceId)
+                if (info.CommitSeq != stateEntity.SequenceId)
                 {
                     continue;
                 }
 
                 var pk = PartitionEntity.MakePartitionKey(this.partitionKey, partNum);
-                var rk = PartitionEntity.MakeRowKey(commitSeq);
+                var rk = PartitionEntity.MakeRowKey(info.CommitSeq);
                 keysToDelete.Add(MakeKeyAttributes(pk, rk));
             }
 
@@ -612,28 +618,27 @@ public partial class DynamoDBPartitionedTransactionalStateStorage<TState> : ITra
     /// </summary>
     private async Task DeleteOrphanPartitionRows(StateEntity stateEntity)
     {
-        if (stateEntity.State is not { Length: > 0 }) return;
+        if (stateEntity.PartitionManifest is not { Length: > 0 }) return;
 
         try
         {
-            var state = Deserialize<TState>(stateEntity.State);
-            var oldManifest  = state != null ? state.Manifest : null;
+            var oldManifest = Deserialize<PartitionManifest>(stateEntity.PartitionManifest);
             if (oldManifest == null) return;
             
             var keysToDelete = new List<Dictionary<string, AttributeValue>>();
             
-            foreach (var (partNum, oldSeq) in oldManifest.PartitionToCommitSeq)
+            foreach (var (partNum, oldInfo) in oldManifest.PartitionInfos)
             {
                 // Don't delete if current manifest still references this exact (partNum, seq) pair
-                if (currentManifest?.PartitionToCommitSeq != null &&
-                    currentManifest.PartitionToCommitSeq.TryGetValue(partNum, out var curSeq) &&
-                    curSeq == oldSeq)
+                if (currentManifest?.PartitionInfos != null &&
+                    currentManifest.PartitionInfos.TryGetValue(partNum, out var curInfo) &&
+                    curInfo.CommitSeq == oldInfo.CommitSeq)
                 {
                     continue; // still in use
                 }
 
                 var pk = PartitionEntity.MakePartitionKey(this.partitionKey, partNum);
-                var rk = PartitionEntity.MakeRowKey(oldSeq);
+                var rk = PartitionEntity.MakeRowKey(oldInfo.CommitSeq);
                 keysToDelete.Add(MakeKeyAttributes(pk, rk));
             }
 
